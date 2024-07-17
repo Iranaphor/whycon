@@ -39,6 +39,10 @@ If you decide to use this software for your research, please cite <i>WhyCon</i> 
 1. Install the required <a href="#dependencies">libraries</a>
 ```
 sudo apt-get install libsdl1.2-dev libsdl-ttf2.0-dev libncurses5-dev graphicsmagick-libmagick-dev-compat
+sudo add-apt-repository -y ppa:cran/imagemagick
+sudo apt-get update
+sudo apt-get install -y libmagick++-dev
+sudo apt install graphicsmagick-libmagick-dev-compat libgraphicsmagick++1-dev libmagick++-6-headers
 ```
 2. Download the code from GitHub into a catkin workspace.
 3. Compile the code - just type `catkin_make` in workspace directory.

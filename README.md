@@ -87,8 +87,8 @@ roslaunch whycon_ros whycon.launch [...] idBits:=...
 
 #### Logs, GUI, recording topics
 
-1. GUI can be omitted by passing argument `useGui:=false` at strat up.
-2. Video and communication topics can be save using <i>rosbag</i>.
+1. GUI can be omitted by passing argument `useGui:=false` at launch.
+2. Video and communication topics can be saved using <i>rosbag</i>.
 
 #### GUI key binding
 
@@ -127,7 +127,7 @@ roslaunch whycon_ros whycon.launch [...] idBits:=...
 
 #### Some additional remarks
 
-1. At this point, you can start experimenting with the syste by adding whatever features you might think useful.
+1. At this point, you can start experimenting with the system by adding whatever features you might think useful.
 2. We have tried to comment the code so an experienced programmer should be able to alter the system accordingly. However, if you have any questions regarding the code, feel free to contact [Tom Krajnik](http://scholar.google.co.uk/citations?user=Qv3nqgsAAAAJ&hl=en&oi=ao) or [Matias Nitsche](https://scholar.google.co.uk/citations?user=Z0hQoRUAAAAJ&hl=en&oi=ao)
 3. If you use this localization system for your research, please don't forget to cite at least one relevant paper from these [bibtex](http://raw.githubusercontent.com/wiki/gestom/CosPhi/papers/WhyCon.bib) records.
 4. Have fun!

@@ -19,9 +19,9 @@
 typedef REAL MAT[NMAX][NMAX];
 typedef REAL MAT1[NMAX][MMAX];                         
     
-void MATINV(int, int, MAT, MAT1, REAL*);    
-void MATMUL(MAT,MAT,MAT,int);   
-void MATMUL1(MAT,MAT1,MAT1,int,int);  
+void MATINV(int, int, MAT&, MAT1&, REAL&);    
+void MATMUL(MAT&, MAT&, MAT&, int);   
+void MATMUL1(MAT&, MAT1&, MAT1&, int, int);  
 
 void eigen_decomposition(double A[3][3], double V[3][3], double d[3]);
 

@@ -1,0 +1,18 @@
+
+whycon_ros:
+  ros__parameters:
+    calibDefPath: "etc/default.cal"
+    camera_frame: "camera_color_optical_frame"
+    camInfo: "/depth/camera_info"
+    camRaw: "/depth/image_raw"
+    circleDiameter: 15
+    fontPath: "etc/font.ttf"
+    hammingDist: 1
+    numMarkers: 10
+    maxDetectionDistance: 6
+    maxMarkers: 100
+    minDetectionsToPublish: 2
+    idBits: 6
+    idSamples: 360
+    useAcuteFilter: true
+    useGui: true

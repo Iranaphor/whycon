@@ -18,21 +18,19 @@
 #include "CNecklace.h"
 #include "CRawImage.h"
 
-// ROS libraries
-#include <ros/ros.h>
-#include <tf/tf.h>
-#include <image_transport/image_transport.h>
-#include <dynamic_reconfigure/server.h>
-#include <whycon_ros/whyconConfig.h>
-#include <whycon_ros/MarkerArray.h>
-#include <whycon_ros/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
-#include <geometry_msgs/Quaternion.h>
+// ROS2 libraries
+#include <rclcpp/rclcpp.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <image_transport/image_transport.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
 
 using namespace cv;
 
-
-class CWhycon {
+class CWhycon : public rclcpp::Node {
 
     public:
 
@@ -55,7 +53,6 @@ class CWhycon {
         int hammingDist;        // hamming distance of ID code
 
         /*program flow control*/
-        //bool saveVideo = false;   //save video to output folder?
         bool stop;          // stop and exit ?
         int moveVal;        // how many frames to process ?
         int moveOne;        // how many frames to process now (setting moveOne to 0 or lower freezes the video stream)
@@ -67,13 +64,10 @@ class CWhycon {
 
         CWhycon();      // constructor sets up essential variables
         ~CWhycon();     // destructor
-        void init(char *fPath, char *calPath);      // creates nessesary objects and segment detectors
+        void init(std::string fPath, std::string calPath);      // creates necessary objects and segment detectors
 
-        void cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& msg);
-        void imageCallback(const sensor_msgs::ImageConstPtr& msg);
-
-        // dynamic parameter reconfiguration
-        static void reconfigureCallback(CWhycon *whycon, whycon_ros::whyconConfig& config, uint32_t level);
+        void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+        void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
 
     private:
 
@@ -86,7 +80,7 @@ class CWhycon {
         Uint8 lastKeys[1000];   // keys pressed in the previous step
         Uint8 *keys;            // pressed keys
         bool displayHelp;       // displays some usage hints
-        bool drawCoords;        // draws coordinatess at the robot's positions
+        bool drawCoords;        // draws coordinates at the robot's positions
         int runs;               // number of gui updates/detections performed 
         int evalTime;           // time required to detect the patterns
         int screenWidth;        // max GUI width
@@ -96,7 +90,7 @@ class CWhycon {
         const int calibrationSteps = 20;            // how many measurements to average to estimate calibration pattern position (manual calib)
         const int autoCalibrationSteps = 30;        // how many measurements to average to estimate calibration pattern position (automatic calib)  
         const int autoCalibrationPreSteps = 10;     // how many measurements to discard before starting to actually auto-calibrating (automatic calib)  
-        int calibNum;                       // number of objects acquired for calibration (5 means calibration winished inactive)
+        int calibNum;                       // number of objects acquired for calibration (5 means calibration finished inactive)
         STrackedObject calib[5];            // array to store calibration patterns positions
         STrackedObject *calibTmp;           // array to store several measurements of a given calibration pattern
         int calibStep;                      // actual calibration step (num of measurements of the actual pattern)
@@ -114,21 +108,16 @@ class CWhycon {
         CTransformation *trans;                         // allows to transform from image to metric coordinates
         CNecklace *decoder;                             // Necklace code decoder
 
-        ros::NodeHandle *n;                     // ROS node
-        ros::Subscriber subInfo;                // camera info subscriber
+        rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr subInfo;                // camera info subscriber
         image_transport::Subscriber subImg;     // image raw subscriber
-        ros::Publisher markers_pub;             // publisher of MarkerArray
-        ros::Publisher feature_pub;             // publisher of MarkerArray as ImageFeatures
-        ros::Publisher visual_pub;              // publisher of MarkerArray for RVIZ
+        rclcpp::Publisher<whycon_ros::msg::MarkerArray>::SharedPtr markers_pub;             // publisher of MarkerArray
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr visual_pub;       // publisher of MarkerArray for RVIZ
         CRawImage *image;                       // encapsulation of image raw data
-
-        dynamic_reconfigure::Server<whycon_ros::whyconConfig> server;                   // server for dynamic reconfigure
-        dynamic_reconfigure::Server<whycon_ros::whyconConfig>::CallbackType dynSer;     // callback server to handle reconfigure function
 
         std::string fontPath;           // path to GUI font
         std::string calibDefPath;       // path to user defined coordinate calibration
 
-        // intrisic and distortion params from camera_info
+        // intrinsic and distortion params from camera_info
         Mat intrinsic = Mat::ones(3,3, CV_32FC1);
         Mat distCoeffs = Mat::ones(1,5, CV_32FC1);
 
@@ -140,7 +129,6 @@ class CWhycon {
 
         /*process events coming from GUI*/
         void processKeys();
-
 };
 
 #endif

@@ -11,11 +11,9 @@
 #define __CTRANSFORMATION_H__
 
 #include <stdio.h>
-#include <math.h>
-#include <unistd.h>
+#include <cmath>
 #include <opencv2/opencv.hpp>
 #include "CCircleDetect.h"
-
 
 using namespace cv;
 using namespace std;

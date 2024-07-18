@@ -1,51 +1,37 @@
 <?xml version="1.0"?>
-<package>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>whycon_ros</name>
   <version>2.3.0</version>
-  <description>Implementats the WhyCon localisation system into ROS.</description>
+  <description>Implements the WhyCon localization system into ROS.</description>
 
   <maintainer email="marc@hanheide.net">Marc Hanheide</maintainer>
-
-  <!-- Commonly used license strings: -->
-  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
+  <author email="tomas.krajnik@fel.cvut.cz">Tom Krajnik</author>
   <license>MIT</license>
 
   <url type="website">https://github.com/gestom/whycon-orig</url>
 
-  <author email="tomas.krajnik@fel.cvut.cz">Tom Krajnik</author>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <buildtool_depend>catkin</buildtool_depend>
-  
-  <build_depend>roscpp</build_depend>
-  <build_depend>tf</build_depend>
-  <build_depend>image_transport</build_depend>
-  <build_depend>dynamic_reconfigure</build_depend>
-  <build_depend>message_generation</build_depend>
-  <build_depend>visualization_msgs</build_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>std_msgs</build_depend>
-  <build_depend>cv_bridge</build_depend>
-  <build_depend>sdl</build_depend>
-  <build_depend>sdl-ttf</build_depend>
-  <build_depend>libncurses-dev</build_depend>
-  <build_depend>libmagick</build_depend>
+  <depend>rclcpp</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>image_transport</depend>
+  <depend>rosidl_default_generators</depend>
+  <depend>visualization_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>sdl</depend>
+  <depend>sdl-ttf</depend>
 
-  <run_depend>roscpp</run_depend>
-  <run_depend>tf</run_depend>
-  <run_depend>image_transport</run_depend>
-  <run_depend>dynamic_reconfigure</run_depend>
-  <run_depend>message_runtime</run_depend>
-  <run_depend>visualization_msgs</run_depend>
-  <run_depend>geometry_msgs</run_depend>
-  <run_depend>std_msgs</run_depend>
-  <run_depend>cv_bridge</run_depend>
-  <run_depend>sdl</run_depend>
-  <run_depend>sdl-ttf</run_depend>
-  <run_depend>libncurses-dev</run_depend>
+  <exec_depend>libncurses-dev</exec_depend>
+  <!-- <exec_depend>libmagick++-dev</exec_depend> -->
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
   <export>
-    <!-- You can specify that this package is a metapackage here: -->
-    <!-- <metapackage/> -->
-    <!-- Other tools can request additional information be placed here -->
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

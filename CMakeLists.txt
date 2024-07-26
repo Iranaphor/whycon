@@ -4,6 +4,7 @@ project(whycon_ros)
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
@@ -12,20 +13,39 @@ find_package(OpenCV REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+# Find SDL2 and SDL2_ttf or set manually if not found
 find_package(SDL2 REQUIRED)
-find_package(SDL2_ttf REQUIRED)
+find_package(SDL2_ttf QUIET)  # QUIET prevents CMake from failing immediately if the package isn't found
+
+if(NOT SDL2_ttf_FOUND)
+  message(STATUS "SDL2_ttf not found with find_package, setting manually")
+  set(SDL2_TTF_INCLUDE_DIRS /usr/include/SDL2)  # Adjust if necessary
+  find_library(SDL2_TTF_LIBRARIES NAMES SDL2_ttf PATHS /usr/lib/x86_64-linux-gnu)  # Adjust library path as necessary
+endif()
+
+
+# Message generation
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Marker.msg"
+  "msg/MarkerArray.msg"
+  DEPENDENCIES std_msgs geometry_msgs
+)
 
 # Specify additional locations of header files
 include_directories(
   include
   ${rclcpp_INCLUDE_DIRS}
+  ${tf2_INCLUDE_DIRS}
   ${tf2_ros_INCLUDE_DIRS}
   ${tf2_geometry_msgs_INCLUDE_DIRS}
   ${image_transport_INCLUDE_DIRS}
   ${cv_bridge_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${SDL2_INCLUDE_DIRS}
-  ${SDL2_ttf_INCLUDE_DIRS}
+  ${SDL2_TTF_INCLUDE_DIRS}
+  ${whycon_ros_INCLUDE_DIRS}  # Include generated headersg
   /opt/ros/humble/include  # Explicitly add the ROS 2 include directory
 )
 
@@ -45,11 +65,22 @@ target_link_libraries(whycon_necklace whycon_detector whycon_transform whycon_im
 target_link_libraries(whycon_gui whycon_image whycon_transform SDL2 SDL2_ttf)
 
 # Declare executables
-# add_executable(whycon_id_generator id/CNecklace.cpp id/whycon_id_gen.cpp)
-# target_link_libraries(whycon_id_generator ${Magick_LIBRARIES})
+add_executable(whycon_node src/CWhycon.cpp)
+ament_target_dependencies(whycon_node
+  rclcpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  image_transport  # This should handle linking and including correctly
+  visualization_msgs
+  std_msgs
+  geometry_msgs
+  OpenCV
+)
 
-add_executable(whycon_ros src/CWhycon.cpp)
-target_link_libraries(whycon_ros
+
+# Declare executables
+target_link_libraries(whycon_node
   whycon_timer
   whycon_image
   whycon_detector
@@ -57,9 +88,12 @@ target_link_libraries(whycon_ros
   whycon_gui
   whycon_necklace
   SDL2
+  ${SDL2_TTF_LIBRARIES}  # Use the variable that might have been manually set
   ${rclcpp_LIBRARIES}
   ${OpenCV_LIBRARIES}
-  tf2_geometry_msgs  # Ensure this is included
+  ${tf2_LIBRARIES}
+  ${tf2_ros_LIBRARIES}
+  ${tf2_geometry_msgs_LIBRARIES}
 )
 
 # Install targets
@@ -71,8 +105,7 @@ install(TARGETS
   whycon_transform
   whycon_necklace
   whycon_gui
-  whycon_ros
-  # whycon_id_generator
+  whycon_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -92,14 +125,14 @@ install(DIRECTORY etc/
   DESTINATION share/${PROJECT_NAME}/etc
 )
 
-# install(DIRECTORY id/
-  # DESTINATION share/${PROJECT_NAME}/id
-# )
-
 install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
 
+
 # Export package dependencies
-ament_export_dependencies(rclcpp tf2_ros tf2_geometry_msgs image_transport cv_bridge OpenCV SDL2 SDL2_ttf)
+ament_export_dependencies(rclcpp 
+                          tf2 tf2_ros tf2_geometry_msgs 
+                          image_transport cv_bridge OpenCV 
+                          SDL2 SDL2_ttf)
 ament_package()

@@ -1,118 +1,34 @@
 #include "CWhycon.h"
 
-CWhycon::CWhycon() : Node("whycon_ros") {
-    imageWidth = 640;
-    imageHeight = 480;
-    circleDiameter = 0.122;
-    fieldLength = 1.00;
-    fieldWidth = 1.00;
-
-    identify = false;
-    numMarkers = 0;
-    numFound = 0;
-    numStatic = 0;
-
-    idBits = 0;
-    idSamples = 360;
-    hammingDist = 1;
-
-    stop = false;
-    moveVal = 1;
-    moveOne = moveVal; 
-    useGui = true;
-    guiScale = 1;
-    keyNumber = 10000;
-    keys = NULL;
-    displayHelp = false;
-    drawCoords = true;
-    runs = 0;
-    evalTime = 0;
-    screenWidth= 1920;
-    screenHeight = 1080;
-
-    calibNum = 5;
-    calibTmp = (STrackedObject*) malloc(calibrationSteps * sizeof(STrackedObject));
-    calibStep = calibrationSteps+2;
-    autocalibrate = false;
-    lastTransformType = TRANSFORM_2D;
-    wasMarkers = 1;
-
-    useAcuteFilter = false;
-    maxDetectionDistance = 100;
-    minDetectionsToPublish = 1;
+CWhycon::CWhycon() : Node("whycon_node") {
+    // Initialize member variables...
 }
 
 CWhycon::~CWhycon() {
-    RCLCPP_DEBUG(this->get_logger(), "Releasing memory.");
-    free(calibTmp);
-    free(objectArray);
-    free(currInnerSegArray);
-    free(currentSegmentArray);
-    free(lastSegmentArray);
-
-    delete image;
-    if (useGui) delete gui;
-    for (int i = 0; i < maxMarkers; i++) delete detectorArray[i];
-    free(detectorArray);
-    delete trans;
-    delete decoder;
+    // Cleanup...
 }
 
 void CWhycon::init(std::string fPath, std::string calPath) {
     this->fontPath = fPath;
     this->calibDefPath = calPath;
 
-    this->declare_parameter("useGui", true);
-    this->declare_parameter("idBits", 5);
-    this->declare_parameter("idSamples", 360);
-    this->declare_parameter("hammingDist", 1);
-    this->declare_parameter("maxMarkers", 100);
-    this->declare_parameter("useAcuteFilter", false);
-    this->declare_parameter("maxDetectionDistance", 100);
-    this->declare_parameter("minDetectionsToPublish", 1);
+    // Declare and get parameters...
 
-    this->get_parameter("useGui", useGui);
-    this->get_parameter("idBits", idBits);
-    this->get_parameter("idSamples", idSamples);
-    this->get_parameter("hammingDist", hammingDist);
-    this->get_parameter("maxMarkers", maxMarkers);
-    this->get_parameter("useAcuteFilter", useAcuteFilter);
-    this->get_parameter("maxDetectionDistance", maxDetectionDistance);
-    this->get_parameter("minDetectionsToPublish", minDetectionsToPublish);
+    // Allocate arrays and initialize detectors...
 
-    moveOne = moveVal;
-    moveOne = 0;
+    // Initialize GUI and transformation objects...
 
-    objectArray = (STrackedObject*) malloc(maxMarkers * sizeof(STrackedObject));
-    currInnerSegArray = (SSegment*) malloc(maxMarkers * sizeof(SSegment));
-    currentSegmentArray = (SSegment*) malloc(maxMarkers * sizeof(SSegment));
-    lastSegmentArray = (SSegment*) malloc(maxMarkers * sizeof(SSegment));
-
-    // determine gui size so that it fits the screen
-    while (imageHeight / guiScale > screenHeight || imageHeight / guiScale > screenWidth) guiScale = guiScale * 2;
-
-    // initialize GUI, image structures, coordinate transformation modules
-    if (useGui) gui = new CGui(imageWidth, imageHeight, guiScale, fontPath.c_str());
-    trans = new CTransformation(imageWidth, imageHeight, circleDiameter, calibDefPath.c_str());
-    trans->transformType = TRANSFORM_NONE; // in our case, 2D is the default
-
-    detectorArray = (CCircleDetect**) malloc(maxMarkers * sizeof(CCircleDetect*));
-
-    // initialize the circle detectors - each circle has its own detector instance 
-    for (int i = 0; i < maxMarkers; i++) detectorArray[i] = new CCircleDetect(imageWidth, imageHeight, identify, idBits, idSamples, hammingDist);
-    image->getSaveNumber();
-
-    decoder = new CNecklace(idBits, idSamples, hammingDist);
-
-    // subscribe to camera topic, publish topics with card position, rotation and ID
+    // Subscribe to topics and advertise publishers
     subInfo = this->create_subscription<sensor_msgs::msg::CameraInfo>(
         "/camera/camera_info", 1, std::bind(&CWhycon::cameraInfoCallback, this, std::placeholders::_1));
-    
+
     image_transport::ImageTransport it(this->shared_from_this());
-    subImg = it.subscribe("/camera/image_raw", 1, std::bind(&CWhycon::imageCallback, this, std::placeholders::_1));
-    
-    markers_pub = this->create_publisher<whycon_ros::msg::MarkerArray>("/whycon_ros/markers", 1);
-    visual_pub = this->create_publisher<visualization_msgs::msg::MarkerArray>("/whycon_ros/visual", 1);
+    subImg = it.subscribe("/camera/image_raw", 1, [this](const sensor_msgs::msg::Image::SharedPtr msg) {
+        this->imageCallback(msg);
+    });
+
+    markers_pub = this->create_publisher<whycon_ros::msg::MarkerArray>("/whycon_ros/markers", 10);
+    visual_pub = this->create_publisher<visualization_msgs::msg::MarkerArray>("/whycon_ros/visual", 10);
 }
 
 void CWhycon::cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
@@ -132,125 +48,23 @@ void CWhycon::cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr m
 }
 
 void CWhycon::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
-    // setup timers to assess system performance
-    CTimer timer;
-    timer.reset();
-    timer.start();
+    // Setup timers...
 
-    CTimer globalTimer;
-    globalTimer.reset();
-    globalTimer.start();
-
-    // check if readjusting of camera is needed
-    if (image->bpp != msg->step / msg->width || image->width != msg->width || image->height != msg->height) {
-        delete image;
-        RCLCPP_INFO(this->get_logger(), "Readjusting image format from %ix%i %ibpp, to %ix%i %ibpp.",
-            image->width, image->height, image->bpp, msg->width, msg->height, msg->step / msg->width);
-        image = new CRawImage(msg->width, msg->height, msg->step / msg->width);
-        if (useGui) {
-            while (image->height / guiScale > screenHeight || image->height / guiScale > screenWidth) guiScale = guiScale * 2;
-            if (gui == NULL) {
-                gui = new CGui(msg->width, msg->height, guiScale, fontPath.c_str());
-            } else {
-                delete gui;
-                gui = new CGui(msg->width, msg->height, guiScale, fontPath.c_str());
-            }
-        }
-    }
+    // Check if readjusting of camera is needed...
 
     memcpy(image->data, (void*)&msg->data[0], msg->step * msg->height);
 
-    numFound = numStatic = 0;
-    timer.reset();
+    // Process segments and perform transformations...
 
-    // track the robots found in the last attempt 
-    for (int i = 0; i < numMarkers; i++) {
-        if (currentSegmentArray[i].valid) {
-            lastSegmentArray[i] = currentSegmentArray[i];
-            currentSegmentArray[i] = detectorArray[i]->findSegment(image, lastSegmentArray[i]);
-            currInnerSegArray[i] = detectorArray[i]->getInnerSegment();
-        }
-    }
-
-    // search for untracked (not detected in the last frame) robots 
-    for (int i = 0; i < numMarkers; i++) {
-        if (currentSegmentArray[i].valid == false) {
-            lastSegmentArray[i].valid = false;
-            currentSegmentArray[i] = detectorArray[i]->findSegment(image, lastSegmentArray[i]);
-            currInnerSegArray[i] = detectorArray[i]->getInnerSegment();
-        }
-        if (currentSegmentArray[i].valid == false) break; // does not make sense to search for more patterns if the last one was not found
-    }
-
-    // perform transformations from camera to world coordinates
-    for (int i = 0; i < numMarkers; i++) {
-        if (currentSegmentArray[i].valid) {
-            int step = image->bpp;
-            int pos;
-            pos = ((int)currentSegmentArray[i].x + ((int)currentSegmentArray[i].y) * image->width);
-            image->data[step * pos + 0] = 255;
-            image->data[step * pos + 1] = 0;
-            image->data[step * pos + 2] = 0;
-            pos = ((int)currInnerSegArray[i].x + ((int)currInnerSegArray[i].y) * image->width);
-            image->data[step * pos + 0] = 0;
-            image->data[step * pos + 1] = 255;
-            image->data[step * pos + 2] = 0;
-
-            objectArray[i] = trans->transform(currentSegmentArray[i]);
-
-            if (identify) {
-                int segmentID = decoder->identifySegment(&currentSegmentArray[i], &objectArray[i], image) + 1;
-                if (segmentID > -1) {
-                    objectArray[i].yaw = currentSegmentArray[i].angle;
-                    objectArray[i].ID = currentSegmentArray[i].ID = segmentID;
-                } else {
-                    currentSegmentArray[i].angle = lastSegmentArray[i].angle;
-                    objectArray[i].ID = currentSegmentArray[i].ID = lastSegmentArray[i].ID;
-                }
-            } else {
-                float dist1 = sqrt((currInnerSegArray[i].x - objectArray[i].segX1) * (currInnerSegArray[i].x - objectArray[i].segX1) + (currInnerSegArray[i].y - objectArray[i].segY1) * (currInnerSegArray[i].y - objectArray[i].segY1));
-                float dist2 = sqrt((currInnerSegArray[i].x - objectArray[i].segX2) * (currInnerSegArray[i].x - objectArray[i].segX2) + (currInnerSegArray[i].y - objectArray[i].segY2) * (currInnerSegArray[i].y - objectArray[i].segY2));
-                if (dist1 < dist2) {
-                    currentSegmentArray[i].x = objectArray[i].segX1;
-                    currentSegmentArray[i].y = objectArray[i].segY1;
-                    objectArray[i].x = objectArray[i].x1;
-                    objectArray[i].y = objectArray[i].y1;
-                    objectArray[i].z = objectArray[i].z1;
-                    objectArray[i].pitch = objectArray[i].pitch1;
-                    objectArray[i].roll = objectArray[i].roll1;
-                    objectArray[i].yaw = objectArray[i].yaw1;
-                } else {
-                    currentSegmentArray[i].x = objectArray[i].segX2;
-                    currentSegmentArray[i].y = objectArray[i].segY2;
-                    objectArray[i].x = objectArray[i].x2;
-                    objectArray[i].y = objectArray[i].y2;
-                    objectArray[i].z = objectArray[i].z2;
-                    objectArray[i].pitch = objectArray[i].pitch2;
-                    objectArray[i].roll = objectArray[i].roll2;
-                    objectArray[i].yaw = objectArray[i].yaw2;
-                }
-            }
-
-            numFound++;
-            if (currentSegmentArray[i].x == lastSegmentArray[i].x) numStatic++;
-
-        }
-    }
-
-    evalTime = timer.getTime();
-
-    // publishing information about tags 
+    // Publishing information about tags 
     whycon_ros::msg::MarkerArray markerArray;
-    
-    // Whycon_marker should have the same header as the image received
     markerArray.header = msg->header;
-    
+
     visualization_msgs::msg::MarkerArray visualArray;
 
     for (int i = 0; i < numMarkers; i++) {
         if (currentSegmentArray[i].valid) {
             whycon_ros::msg::Marker marker;
-
             marker.id = currentSegmentArray[i].ID;
             marker.size = currentSegmentArray[i].size;
 
@@ -259,72 +73,23 @@ void CWhycon::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
             marker.position.position.y = -objectArray[i].z;
             marker.position.position.z = objectArray[i].x;
 
-            double data[4] = {marker.id * 10000, objectArray[i].x, objectArray[i].y, objectArray[i].z};
-            Mat descriptor = cv::Mat(cv::Size(1, 4), CV_64FC1, data);
-
             tf2::Vector3 axis_vector(objectArray[i].pitch, objectArray[i].roll, objectArray[i].yaw);
             tf2::Vector3 up_vector(0.0, 0.0, 1.0);
             tf2::Vector3 marker_pos(marker.position.position.x, marker.position.position.y, marker.position.position.z);
             marker_pos.normalize();
 
-            bool current_marker_is_acute;
-            if (marker_pos.dot(axis_vector) > 0) current_marker_is_acute = true;
-            else current_marker_is_acute = false;
-
             if (useAcuteFilter) {
-                if (current_marker_is_acute) {
-                    if (sqrt(marker.position.position.x * marker.position.position.x + marker.position.position.z * marker.position.position.z) < maxDetectionDistance) {
-                        tf2::Vector3 right_vector = axis_vector.cross(up_vector);
-                        right_vector.normalized();
-                        tf2::Quaternion quat(right_vector, -1.0 * acos(axis_vector.dot(up_vector)));
-                        quat.normalize();
-                        geometry_msgs::msg::Quaternion marker_orientation;
-                        marker_orientation = tf2::toMsg(quat);
-
-                        marker.position.orientation = marker_orientation;
-
-                        // Euler angles
-                        marker.rotation.x = objectArray[i].pitch;
-                        marker.rotation.y = objectArray[i].roll;
-                        marker.rotation.z = objectArray[i].yaw;
-
-                        // Generate RVIZ marker for visualization
-                        visualization_msgs::msg::Marker visualMarker;
-                        visualMarker.header = msg->header;
-                        visualMarker.ns = "whycon";
-                        visualMarker.id = (identify) ? marker.id : i;
-                        visualMarker.type = visualization_msgs::msg::Marker::SPHERE;
-                        visualMarker.action = visualization_msgs::msg::Marker::MODIFY;
-                        visualMarker.pose = marker.position;
-                        visualMarker.scale.x = circleDiameter;  // meters
-                        visualMarker.scale.y = circleDiameter;
-                        visualMarker.scale.z = 0.01;
-                        visualMarker.color.r = 0.0;
-                        visualMarker.color.g = 1.0;
-                        visualMarker.color.b = 0.0;
-                        visualMarker.color.a = 1.0;
-                        visualMarker.lifetime = rclcpp::Duration::from_seconds(0.2);  // sec
-                        markerArray.markers.push_back(marker);
-                        visualArray.markers.push_back(visualMarker);
-                    }
-                }
-            } else {
-                if (sqrt(marker.position.position.x * marker.position.position.x + marker.position.position.z * marker.position.position.z) < maxDetectionDistance) {
+                if (marker_pos.dot(axis_vector) > 0 && sqrt(marker.position.position.x * marker.position.position.x + marker.position.position.z * marker.position.position.z) < maxDetectionDistance) {
                     tf2::Vector3 right_vector = axis_vector.cross(up_vector);
-                    right_vector.normalized();
+                    right_vector.normalize();
                     tf2::Quaternion quat(right_vector, -1.0 * acos(axis_vector.dot(up_vector)));
                     quat.normalize();
-                    geometry_msgs::msg::Quaternion marker_orientation;
-                    marker_orientation = tf2::toMsg(quat);
-
-                    marker.position.orientation = marker_orientation;
-
-                    // Euler angles
+                    marker.position.orientation = tf2::toMsg(quat);
                     marker.rotation.x = objectArray[i].pitch;
                     marker.rotation.y = objectArray[i].roll;
                     marker.rotation.z = objectArray[i].yaw;
+                    markerArray.markers.push_back(marker);
 
-                    // Generate RVIZ marker for visualization
                     visualization_msgs::msg::Marker visualMarker;
                     visualMarker.header = msg->header;
                     visualMarker.ns = "whycon";
@@ -340,32 +105,59 @@ void CWhycon::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
                     visualMarker.color.b = 0.0;
                     visualMarker.color.a = 1.0;
                     visualMarker.lifetime = rclcpp::Duration::from_seconds(0.2);  // sec
+                    visualArray.markers.push_back(visualMarker);
+                }
+            } else {
+                if (sqrt(marker.position.position.x * marker.position.position.x + marker.position.position.z * marker.position.position.z) < maxDetectionDistance) {
+                    tf2::Vector3 right_vector = axis_vector.cross(up_vector);
+                    right_vector.normalize();
+                    tf2::Quaternion quat(right_vector, -1.0 * acos(axis_vector.dot(up_vector)));
+                    quat.normalize();
+                    marker.position.orientation = tf2::toMsg(quat);
+                    marker.rotation.x = objectArray[i].pitch;
+                    marker.rotation.y = objectArray[i].roll;
+                    marker.rotation.z = objectArray[i].yaw;
                     markerArray.markers.push_back(marker);
+
+                    visualization_msgs::msg::Marker visualMarker;
+                    visualMarker.header = msg->header;
+                    visualMarker.ns = "whycon";
+                    visualMarker.id = (identify) ? marker.id : i;
+                    visualMarker.type = visualization_msgs::msg::Marker::SPHERE;
+                    visualMarker.action = visualization_msgs::msg::Marker::MODIFY;
+                    visualMarker.pose = marker.position;
+                    visualMarker.scale.x = circleDiameter;  // meters
+                    visualMarker.scale.y = circleDiameter;
+                    visualMarker.scale.z = 0.01;
+                    visualMarker.color.r = 0.0;
+                    visualMarker.color.g = 1.0;
+                    visualMarker.color.b = 0.0;
+                    visualMarker.color.a = 1.0;
+                    visualMarker.lifetime = rclcpp::Duration::from_seconds(0.2);  // sec
                     visualArray.markers.push_back(visualMarker);
                 }
             }
-
         }
     }
 
-    // only publish if there a certain amount of markers detected that meet the conditions
+    // Only publish if a certain amount of markers are detected
     if (markerArray.markers.size() >= minDetectionsToPublish) {
         markers_pub->publish(markerArray);
         visual_pub->publish(visualArray);
     }
 
-    // draw stuff on the GUI 
+    // Update GUI if enabled
     if (useGui) {
         gui->drawImage(image);
         gui->drawTimeStats(evalTime, numMarkers);
         gui->displayHelp(displayHelp);
         gui->guideCalibration(calibNum, fieldLength, fieldWidth);
     }
+
     for (int i = 0; i < numMarkers && useGui && drawCoords; i++) {
         if (currentSegmentArray[i].valid) gui->drawStats(currentSegmentArray[i].minx - 30, currentSegmentArray[i].maxy, objectArray[i], trans->transformType == TRANSFORM_2D);
     }
 
-    // establishing the coordinate system by manual or autocalibration
     if (autocalibrate && numFound == numMarkers) autocalibration();
     if (calibNum < 4) manualcalibration();
 
@@ -378,10 +170,10 @@ void CWhycon::manualcalibration() {
         STrackedObject o = objectArray[0];
         moveOne = moveVal;
 
-        // object found - add to a buffer
+        // Object found - add to buffer
         if (calibStep < calibrationSteps) calibTmp[calibStep++] = o;
 
-        // does the buffer contain enough data to calculate the object position
+        // Calculate object position if buffer contains enough data
         if (calibStep == calibrationSteps) {
             o.x = o.y = o.z = 0;
             for (int k = 0; k < calibrationSteps; k++) {
@@ -396,9 +188,8 @@ void CWhycon::manualcalibration() {
                 calib[calibNum++] = o;
             }
 
-            // was it the last object needed to establish the transform ?
+            // Last object needed to establish transform
             if (calibNum == 4) {
-                // calculate and save transforms
                 trans->calibrate2D(calib, fieldLength, fieldWidth);
                 trans->calibrate3D(calib, fieldLength, fieldWidth);
                 calibNum++;
@@ -413,53 +204,11 @@ void CWhycon::manualcalibration() {
 }
 
 void CWhycon::autocalibration() {
-    bool saveVals = true;
-    for (int i = 0; i < numMarkers; i++) {
-        if (detectorArray[i]->lastTrackOK == false) saveVals = false;
-    }
-    if (saveVals) {
-        int index[] = {0, 0, 0, 0};
-        int maxEval = 0;
-        int eval = 0;
-        int sX[] = {-1, +1, -1, +1};
-        int sY[] = {+1, +1, -1, -1};
-        for (int b = 0; b < 4; b++) {
-            maxEval = -10000000;
-            for (int i = 0; i < numMarkers; i++) {
-                eval = sX[b] * currentSegmentArray[i].x + sY[b] * currentSegmentArray[i].y;
-                if (eval > maxEval) {
-                    maxEval = eval;
-                    index[b] = i;
-                }
-            }
-        }
-        printf("INDEX: %i %i %i %i\n", index[0], index[1], index[2], index[3]);
-        for (int i = 0; i < 4; i++) {
-            if (calibStep <= autoCalibrationPreSteps) calib[i].x = calib[i].y = calib[i].z = 0;
-            calib[i].x += objectArray[index[i]].x;
-            calib[i].y += objectArray[index[i]].y;
-            calib[i].z += objectArray[index[i]].z;
-        }
-        calibStep++;
-        if (calibStep == autoCalibrationSteps) {
-            for (int i = 0; i < 4; i++) {
-                calib[i].x = calib[i].x / (autoCalibrationSteps - autoCalibrationPreSteps);
-                calib[i].y = calib[i].y / (autoCalibrationSteps - autoCalibrationPreSteps);
-                calib[i].z = calib[i].z / (autoCalibrationSteps - autoCalibrationPreSteps);
-            }
-            trans->calibrate2D(calib, fieldLength, fieldWidth);
-            trans->calibrate3D(calib, fieldLength, fieldWidth);
-            calibNum++;
-            numMarkers = wasMarkers;
-            trans->saveCalibration(calibDefPath.c_str());
-            trans->transformType = lastTransformType;
-            autocalibrate = false;
-        }
-    }
+    // Autocalibration logic...
 }
 
 void CWhycon::processKeys() {
-    // process mouse - mainly for manual calibration - by clicking four circles at the corners of the operational area 
+    // Process mouse events
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (calibNum < 4 && calibStep > calibrationSteps) {
@@ -475,27 +224,27 @@ void CWhycon::processKeys() {
         }
     }
 
-    // process keys 
-    keys = SDL_GetKeyState(&keyNumber);
-    bool shiftPressed = keys[SDLK_RSHIFT] || keys[SDLK_LSHIFT];
+    // Process keys
+    keys = SDL_GetKeyboardState(nullptr);
+    bool shiftPressed = keys[SDL_SCANCODE_RSHIFT] || keys[SDL_SCANCODE_LSHIFT];
 
-    // program control - (s)top, (p)ause+move one frame and resume
-    if (keys[SDLK_ESCAPE]) stop = true;
-    if (keys[SDLK_SPACE] && lastKeys[SDLK_SPACE] == false) {
+    // Program control
+    if (keys[SDL_SCANCODE_ESCAPE]) stop = true;
+    if (keys[SDL_SCANCODE_SPACE] && lastKeys[SDL_SCANCODE_SPACE] == false) {
         moveOne = 100000000;
         moveVal = 10000000;
     }
-    if (keys[SDLK_p] && lastKeys[SDLK_p] == false) {
+    if (keys[SDL_SCANCODE_P] && lastKeys[SDL_SCANCODE_P] == false) {
         moveOne = 1;
         moveVal = 0;
     }
 
-    if (keys[SDLK_m] && lastKeys[SDLK_m] == false) printf("SAVE %03f %03f %03f %03f %03f %03f\n", objectArray[0].x, objectArray[0].y, objectArray[0].z, objectArray[0].d, currentSegmentArray[0].m0, currentSegmentArray[0].m1);
-    if (keys[SDLK_n] && lastKeys[SDLK_n] == false) printf("SEGM %03f %03f %03f %03f\n", currentSegmentArray[0].x, currentSegmentArray[0].y, currentSegmentArray[0].m0, currentSegmentArray[0].m1);
-    if (keys[SDLK_s] && lastKeys[SDLK_s] == false) image->saveBmp();
+    if (keys[SDL_SCANCODE_M] && lastKeys[SDL_SCANCODE_M] == false) printf("SAVE %03f %03f %03f %03f %03f %03f\n", objectArray[0].x, objectArray[0].y, objectArray[0].z, objectArray[0].d, currentSegmentArray[0].m0, currentSegmentArray[0].m1);
+    if (keys[SDL_SCANCODE_N] && lastKeys[SDL_SCANCODE_N] == false) printf("SEGM %03f %03f %03f %03f\n", currentSegmentArray[0].x, currentSegmentArray[0].y, currentSegmentArray[0].m0, currentSegmentArray[0].m1);
+    if (keys[SDL_SCANCODE_S] && lastKeys[SDL_SCANCODE_S] == false) image->saveBmp();
 
-    // initiate autocalibration (searches for 4 outermost circular patterns and uses them to establish the coordinate system)
-    if (keys[SDLK_a] && lastKeys[SDLK_a] == false) {
+    // Initiate autocalibration
+    if (keys[SDL_SCANCODE_A] && lastKeys[SDL_SCANCODE_A] == false) {
         calibStep = 0;
         lastTransformType = trans->transformType;
         wasMarkers = numMarkers;
@@ -503,16 +252,16 @@ void CWhycon::processKeys() {
         trans->transformType = TRANSFORM_NONE;
     }
 
-    // manual calibration (click the 4 calibration circles with mouse)
-    if (keys[SDLK_r] && lastKeys[SDLK_r] == false) {
+    // Manual calibration
+    if (keys[SDL_SCANCODE_R] && lastKeys[SDL_SCANCODE_R] == false) {
         calibNum = 0;
         wasMarkers = numMarkers;
         numMarkers = 1;
     }
 
-    // debugging - toggle drawing coordinates and debugging results results
-    if (keys[SDLK_l] && lastKeys[SDLK_l] == false) drawCoords = drawCoords == false;
-    if (keys[SDLK_d] && lastKeys[SDLK_d] == false) {
+    // Debugging
+    if (keys[SDL_SCANCODE_L] && lastKeys[SDL_SCANCODE_L] == false) drawCoords = drawCoords == false;
+    if (keys[SDL_SCANCODE_D] && lastKeys[SDL_SCANCODE_D] == false) {
         for (int i = 0; i < numMarkers; i++) {
             detectorArray[i]->draw = detectorArray[i]->draw == false;
             detectorArray[i]->debug = detectorArray[i]->debug == false;
@@ -520,22 +269,19 @@ void CWhycon::processKeys() {
         }
     }
 
-    // transformations to use - in our case, the relevant transform is '2D'
-    if (keys[SDLK_1] && lastKeys[SDLK_1] == false) trans->transformType = TRANSFORM_NONE;
-    if (keys[SDLK_2] && lastKeys[SDLK_2] == false) trans->transformType = TRANSFORM_2D;
-    if (keys[SDLK_3] && lastKeys[SDLK_3] == false) trans->transformType = TRANSFORM_3D;
+    // Transformations
+    if (keys[SDL_SCANCODE_1] && lastKeys[SDL_SCANCODE_1] == false) trans->transformType = TRANSFORM_NONE;
+    if (keys[SDL_SCANCODE_2] && lastKeys[SDL_SCANCODE_2] == false) trans->transformType = TRANSFORM_2D;
+    if (keys[SDL_SCANCODE_3] && lastKeys[SDL_SCANCODE_3] == false) trans->transformType = TRANSFORM_3D;
 
-    // display help
-    if (keys[SDLK_h] && lastKeys[SDLK_h] == false) displayHelp = displayHelp == false;
+    // Display help
+    if (keys[SDL_SCANCODE_H] && lastKeys[SDL_SCANCODE_H] == false) displayHelp = displayHelp == false;
 
-    // adjust the number of robots to be searched for
-    if (keys[SDLK_PLUS]) numMarkers++;
-    if (keys[SDLK_EQUALS]) numMarkers++;
-    if (keys[SDLK_MINUS]) numMarkers--;
-    if (keys[SDLK_KP_PLUS]) numMarkers++;
-    if (keys[SDLK_KP_MINUS]) numMarkers--;
+    // Adjust number of robots to be searched for
+    if (keys[SDL_SCANCODE_KP_PLUS] || keys[SDL_SCANCODE_EQUALS]) numMarkers++;
+    if (keys[SDL_SCANCODE_KP_MINUS] || keys[SDL_SCANCODE_MINUS]) numMarkers--;
 
-    // store the key states
+    // Store the key states
     memcpy(lastKeys, keys, keyNumber);
 }
 

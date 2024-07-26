@@ -23,13 +23,15 @@
   <depend>std_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>sdl</depend>
-  <depend>sdl-ttf</depend>
+  <depend>sdl-ttf-dev</depend>
 
   <exec_depend>libncurses-dev</exec_depend>
   <!-- <exec_depend>libmagick++-dev</exec_depend> -->
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>
